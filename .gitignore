@@ -62,3 +62,5 @@ bge-large-zh-v1.5/
 # ─── 系统文件 ────────────────────────────────
 Thumbs.db
 __MACOSX/
+
+./claude
