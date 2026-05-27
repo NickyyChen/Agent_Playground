@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la /home/czh/big_space/aiagent/agent_learning/)",
+      "Read(//home/czh/big_space/aiagent/agent_learning/**)"
+    ]
+  }
+}
