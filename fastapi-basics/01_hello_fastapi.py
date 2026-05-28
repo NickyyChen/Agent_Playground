@@ -1,148 +1,104 @@
 # -*- coding: utf-8 -*-
 """
-01_hello_fastapi.py — 路由基础：路径参数、查询参数、请求体
-=========================================================
+01_hello_fastapi.py — 第一个 FastAPI 应用
+==========================================
 
-【概念】
-FastAPI 路由用装饰器定义 HTTP 端点：
-  @app.get("/path/{param}")     → GET 请求，路径参数
-  @app.post("/path")            → POST 请求，请求体用 Pydantic Model 校验
-  /path?key=value               → 查询参数（函数签名中没在路径里的参数）
+【概念】什么是 FastAPI？
+FastAPI 是一个现代、高性能的 Python Web 框架，用于构建 RESTful API。
+核心优势：
+  - 自动生成交互式 API 文档（Swagger UI / ReDoc）
+  - 基于 Python 类型注解的数据校验
+  - 异步支持，性能媲美 Node.js
+  - 符合 OpenAPI 规范
 
-路径参数 vs 查询参数：
-  路径参数：/order/ORD001 → def get(order_id: str)  → 资源标识
-  查询参数：/search?keyword=耳机&page=1 → def search(keyword: str, page: int=1) → 过滤/分页
+【在智能客服中解决什么问题】
+智能客服系统需要对外暴露 HTTP API——用户查询订单、提交退款、查询物流。
+FastAPI 用最少的代码，构建出带自动校验、自动文档的生产级 API。
 
-运行：python fastapi-basics/01_hello_fastapi.py
-访问：http://localhost:8000/docs  (自动生成的 Swagger UI)
+【核心流程】
+  1. 创建 FastAPI() 实例 → app
+  2. 用 @app.get("/path") 装饰器定义端点
+  3. 用 uvicorn 启动 ASGI 服务器
+  4. 访问 http://localhost:8000 调用接口
 
 【pip install】
 pip install fastapi uvicorn
 
 【ASCII 架构图】
 
-  HTTP 请求                                     FastAPI 处理
-  ─────────────────────────────────────────────────────────
-
-  GET /order/ORD001?detail=true
-      │                    │
-      │  路径参数           │  查询参数
-      │  {order_id}=ORD001 │  detail=true
-      ▼                    ▼
-  ┌─────────────────────────────────────────┐
-  │  @app.get("/order/{order_id}")          │
-  │  def get_order(order_id: str,           │
-  │                detail: bool = False)    │
-  └─────────────────────────────────────────┘
-      │
+  浏览器 / 客户端
+      │  HTTP GET /
       ▼
-  {"order_id": "ORD001", "detail": true}
+  ┌──────────────────────┐
+  │  uvicorn (ASGI服务器) │  ← 接收 HTTP 请求，转发给 FastAPI
+  └──────┬───────────────┘
+         │
+         ▼
+  ┌──────────────────────┐
+  │  FastAPI() 实例      │  ← 路由匹配 → 调用对应的函数
+  │  @app.get("/")       │
+  │  def root()          │
+  └──────┬───────────────┘
+         │
+         ▼
+  {"message": "欢迎来到好买电商客服 API"}  ← JSON 响应，自动序列化
+
+  FastAPI 三要素：
+  app = FastAPI()  ← 应用实例，注册路由/中间件
+  @app.get(...)    ← 路径操作装饰器，声明 HTTP 方法和 URL
+  def handler()    ← 路径操作函数，处理请求并返回响应
+
+【测试案例】
+  # 启动服务器
+  python fastapi-basics/01_hello_fastapi.py
+
+  # 终端用 curl 测试
+  curl http://localhost:8000/
+  # → {"message":"欢迎来到好买电商客服 API"}
+
+  curl http://localhost:8000/health
+  # → {"status":"ok"}
+
+  # 也可浏览器直接访问: http://localhost:8000/docs 进入 Swagger UI 交互式测试
 """
 
 import uvicorn
-from fastapi import FastAPI, Query, Path
+from fastapi import FastAPI
 
-# WHY: FastAPI() 是整个应用的核心——所有路由、中间件都注册在它上面
+# WHY: FastAPI() 是整个应用的入口，所有路由和中间件都注册在它上面
+# 参数 title/description/version 会出现在自动生成的 Swagger 文档中
 app = FastAPI(
     title="好买电商客服 API",
-    description="Agent-Playground FastAPI 学习 Demo",
+    description="Agent-Playground FastAPI 入门教程 - 01 第一个应用",
     version="1.0.0",
 )
 
 
 # ══════════════════════════════════════════════════════════════
-# 1. 最简单的 GET 端点
+# 路由：@app.get("/") 表示当客户端 GET 请求根路径时，调用这个函数
+# WHY: @ 装饰器是 FastAPI 声明路由的方式——告诉框架"这个函数处理这个 URL"
 # ══════════════════════════════════════════════════════════════
-
 @app.get("/")
 def root():
-    """根路径——不需要任何参数"""
+    """
+    根路径——最简单的 API 端点。
+    返回一个字典，FastAPI 自动转为 JSON 响应。
+    """
     return {"message": "欢迎来到好买电商客服 API"}
 
 
-# ══════════════════════════════════════════════════════════════
-# 2. 路径参数 —— 资源标识
-# WHY: 路径参数是 URL 的一部分，标识"哪个资源"。
-#      FastAPI 自动将 URL 中的 {order_id} 绑定到函数参数 order_id。
-# ══════════════════════════════════════════════════════════════
-
-@app.get("/order/{order_id}")
-def get_order(
-    order_id: str = Path(..., description="订单号，如 ORD20240001"),
-):
-    """
-    获取订单详情。
-    Path(...) 中 ... 表示必填，description 会出现在 Swagger 文档中。
-    """
-    # 模拟数据库查询
-    mock_db = {
-        "ORD20240001": {"product": "漫步者 W820NB", "price": 299, "status": "已签收"},
-    }
-    order = mock_db.get(order_id)
-    if not order:
-        return {"error": f"订单 {order_id} 不存在"}
-    return {"order_id": order_id, **order}
+# WHY: 另一个端点展示如何组织多个 API
+@app.get("/health")
+def health_check():
+    """健康检查——供监控系统使用"""
+    return {"status": "ok"}
 
 
-# ══════════════════════════════════════════════════════════════
-# 3. 查询参数 —— 过滤/分页/开关
-# WHY: 查询参数放在 ? 后面，是可选的过滤条件。
-#      函数签名中没在路径里的参数自动成为查询参数。
-# ══════════════════════════════════════════════════════════════
-
-@app.get("/products/search")
-def search_products(
-    keyword: str = Query(..., min_length=1, description="搜索关键词"),
-    category: str = Query(None, description="品类筛选，如'耳机'"),
-    min_price: float = Query(None, ge=0, description="最低价"),
-    max_price: float = Query(None, le=10000, description="最高价"),
-    page: int = Query(1, ge=1, description="页码"),
-):
-    """
-    搜索商品——展示查询参数的多重用法。
-    Query 支持校验：min_length, ge(>=), le(<=) 等。
-    """
-    return {
-        "keyword": keyword,
-        "filters": {"category": category, "min_price": min_price,
-                    "max_price": max_price},
-        "page": page,
-        "results": [{"name": "漫步者 W820NB", "price": 299}],
-    }
-
-
-# ══════════════════════════════════════════════════════════════
-# 4. POST 端点 —— 请求体
-# WHY: POST 用于创建/提交操作，数据放在请求体中。
-#      用 Pydantic Model 做类型校验——FastAPI 自动解析 JSON 并校验。
-# ══════════════════════════════════════════════════════════════
-
-from pydantic import BaseModel, Field
-
-class RefundRequest(BaseModel):
-    """
-    退款申请的数据模型。
-    WHY: Pydantic 定义字段类型和校验规则——
-         前端传错类型/漏字段时，FastAPI 自动返回 422 错误。
-    """
-    order_id: str = Field(..., min_length=5, description="订单号")
-    reason: str = Field(..., min_length=5, max_length=200, description="退货原因")
-    refund_amount: float = Field(..., gt=0, description="退款金额，必须 >0")
-
-
-@app.post("/refund")
-def create_refund(req: RefundRequest):
-    """
-    提交退款申请。
-    FastAPI 自动：① 解析 JSON 请求体 ② 校验字段 ③ 注入 Pydantic 对象
-    """
-    return {
-        "status": "submitted",
-        "ticket_id": "TKT-20240001",
-        "order_id": req.order_id,
-        "amount": req.refund_amount,
-    }
-
-
+# WHY: __name__ == "__main__" 保证只在直接运行此文件时才启动服务器
+#      被 import 时不会误启动
 if __name__ == "__main__":
+    # WHY: uvicorn.run() 启动 ASGI 服务器
+    # host="127.0.0.1" 只监听本地，避免对外暴露
+    # port=8000 默认端口
+    # log_level="info" 控制日志详细程度
     uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
